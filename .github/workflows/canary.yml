@@ -1,4 +1,4 @@
-name: Publish canary to npm with pnpm
+name: Publish Canary Release to NPM Registry
 
 on:
   push:
@@ -14,9 +14,7 @@ permissions:
 
 jobs:
   release:
-    name: Release Canary
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -39,40 +37,8 @@ jobs:
       - name: Build package
         run: pnpm build
 
-      - name: Publish canary to npm
-        run: |
-          # --- Check if package exists in npm registry ---
-          package_name=$(pnpx json -f package.json -a name)
-          npm view "$package_name" 2>/dev/null || {
-            echo "$package_name does not exist in the npm registry. Skipping publish."
-            exit 0
-          }
-          # --- Determine and release the next canary version ---
-          current_latest=$(pnpx json -f package.json -a version)
-          IFS='.' read -r major minor patch <<<"$current_latest"
-          upcoming_minor="$major.$((minor + 1)).0"
-          current_canary=$(npm view "$package_name" dist-tags.canary 2>/dev/null)
-          if [ -z "$current_canary" ]; then
-            release_version="$upcoming_minor-canary.0"
-          else
-            IFS='.-' read -r canary_major canary_minor canary_patch canary_tag canary_version <<<"$current_canary"
-            release_version="$canary_major.$canary_minor.$canary_patch-canary.$((canary_version + 1))"
-          fi
-          pnpx json -I -f package.json -e "this.version=\"$release_version\""
-          pnpm publish --provenance --access public --no-git-checks --tag canary
-          # --- Set the status with the release link ---
-          package_url="https://www.npmjs.com/package/$package_name/v/$release_version"
-          curl -L \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" \
-            -d "{\"body\": \"Package released - [\`$package_name@$release_version\`]($package_url)\"}"
-          curl -L \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -d "{\"state\": \"success\", \"context\": \"Package released\", \"description\": \"$package_name@$release_version\", \"target_url\": \"$package_url\"}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish Canary Release to NPM Registry
+        uses: nrjdalal/npm-release-canary@v1
+        with:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
